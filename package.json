@@ -12,9 +12,11 @@
     "@ai-sdk/google": "^0.0.24",
     "@ai-sdk/google-vertex": "^0.0.11",
     "ai": "^3.2.10",
+    "nanoid": "^5.0.7",
     "next": "14.2.4",
     "react": "^18",
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20",
