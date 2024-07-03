@@ -1,10 +1,20 @@
 import 'server-only';
 
 import { z } from 'zod';
-import { createAI, getMutableAIState, streamUI } from 'ai/rsc';
+import {
+  createAI,
+  createStreamableUI,
+  createStreamableValue,
+  getAIState,
+  getMutableAIState,
+  streamUI,
+} from 'ai/rsc';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { trainedPrompt } from '@/lib/prompt';
 import { nanoid } from '@/lib/helper';
+import Spinner from './components/ui/Spinner';
+import { streamText } from 'ai';
+import BotMessage from './components/ui/BotMessage';
 
 const google = createGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_VERTEX_KEY,
@@ -43,7 +53,7 @@ export async function submitUserMessage(input: string) {
       {
         id: nanoid(),
         role: 'user',
-        content: `${aiState.get().join('\n\n')}\n\n${input}`,
+        content: `${aiState.get().interactions.join('\n\n')}\n\n${input}`,
       },
     ],
   });
@@ -55,56 +65,166 @@ export async function submitUserMessage(input: string) {
     content: message.content,
   }));
 
-  const ui = await streamUI({
-    //@ts-ignore
-    model: google('models/gemini-1.5-flash-latest'),
-    system: trainedPrompt,
-    messages: [...history],
-    tools: {
-      searchDoctors: {
-        description:
-          'Search for doctors within the location specified by the user',
-        parameters: z.object({
-          location: z.string().describe('Location of the user'),
-          symptoms: z.string().describe('Symptoms the user is facing'),
-        }),
-        generate: async function* ({ location, symptoms }) {
-          yield `Searching for doctors nearby`;
-          const results = await searchDoctors(location, symptoms);
-          return (
-            <div className="bg-gray-200">
-              {results.map((result) => (
-                <div key={result.id}>
-                  <div>{result.name}</div>
-                  <div>{result.phone}</div>
-                </div>
-              ))}
-            </div>
-          );
-        },
-      },
-      diagnose: {
-        description:
-          'Based on the symptoms, diagnose the nearest condition the user may be facing',
-        parameters: z.object({
-          symptoms: z.string().describe('Symptoms the user is facing'),
-        }),
-        generate: async function* ({ symptoms }) {
-          yield `Diagnosing...`;
-          const results = await diagnose(symptoms);
-          return <div>{results.response}</div>;
-        },
-      },
-    },
-  });
+  const textStream = createStreamableValue('');
+  const spinnerStream = createStreamableUI(<Spinner />);
+  const messageStream = createStreamableUI(null);
+  const uiStream = createStreamableUI();
 
-  return ui.value;
+  async () => {
+    try {
+      const result = await streamText({
+        //@ts-ignore
+        model: google('models/gemini-1.5-flash-latest'),
+        temperature: 0,
+        system: trainedPrompt,
+        messages: [...history],
+        tools: {
+          searchDoctors: {
+            description:
+              'Search for doctors within the location specified by the user',
+            parameters: z.object({
+              location: z.string().describe('Location of the user'),
+              diagnosis: z
+                .string()
+                .describe('Health issue the user might be facing'),
+              listOfDoctors: z.array(
+                z.object({
+                  name: z.string().describe('Name of doctor'),
+                  address: z.number().describe('Address of the doctor'),
+                })
+              ),
+            }),
+          },
+          diagnose: {
+            description:
+              'Based on the symptoms, diagnose the nearest condition the user may be facing',
+            parameters: z.object({
+              issue: z.string().describe('Health issue the user is facing'),
+            }),
+          },
+        },
+      });
+
+      let textContent = '';
+      spinnerStream.done(null);
+
+      for await (const delta of result.fullStream) {
+        const { type } = delta;
+
+        if (type === 'text-delta') {
+          const { textDelta } = delta;
+
+          textContent += textDelta;
+          messageStream.update(<BotMessage content={textContent} />);
+
+          aiState.update({
+            ...aiState.get(),
+            messages: [
+              ...aiState.get().messages,
+              {
+                id: nanoid(),
+                role: 'assistant',
+                content: textContent,
+              },
+            ],
+          });
+        } else if (type === 'tool-call') {
+          const { toolName, args } = delta;
+
+          if (toolName === 'searchDoctors') {
+            const { diagnosis, listOfDoctors, location } = args;
+
+            uiStream.update(
+              <div>
+                {listOfDoctors.map((doctor, index) => (
+                  <div key={index}>{doctor.name}</div>
+                ))}
+              </div>
+            );
+
+            aiState.done({
+              ...aiState.get(),
+              interactions: [],
+              messages: [
+                ...aiState.get().messages,
+                {
+                  id: nanoid(),
+                  role: 'assistant',
+                  content: `Here's a list of doctors that I've found based on your location`,
+                  display: {
+                    name: 'searchDoctors',
+                    props: {
+                      diagnosis,
+                      listOfDoctors,
+                      location,
+                    },
+                  },
+                },
+              ],
+            });
+          } else if (toolName === 'diagnose') {
+            const { issue } = args;
+
+            uiStream.update(<div>{issue}</div>);
+
+            aiState.done({
+              ...aiState.get(),
+              interactions: [],
+              messages: [
+                ...aiState.get().messages,
+                {
+                  id: nanoid(),
+                  role: 'assistant',
+                  content: `Here's my diagnosis, you might be having ${diagnose}`,
+                  display: {
+                    name: 'diagnose',
+                    props: {
+                      issue,
+                    },
+                  },
+                },
+              ],
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.error(e);
+
+      const error = new Error(
+        'The AI got rate limited, please try again later.'
+      );
+
+      uiStream.error(error);
+      textStream.error(error);
+      messageStream.error(error);
+      aiState.done();
+    }
+  };
+
+  return {
+    id: nanoid(),
+    attachments: uiStream.value,
+    spinner: spinnerStream.value,
+    display: messageStream.value,
+  };
 }
 
 export const AI = createAI<any[], React.ReactNode[]>({
   initialUIState: [],
-  initialAIState: [],
+  initialAIState: { chatId: nanoid(), interactions: [], messages: [] },
   actions: {
     submitUserMessage,
   },
+  // unstable_onGetUIState: async () => {
+  //   'use server'
+
+  //     const aiState = getAIState()
+
+  //     if (aiState) {
+  //       const uiState = getUIStateFromAIState(aiState)
+  //       return uiState
+  //     }
+
+  // },
 });

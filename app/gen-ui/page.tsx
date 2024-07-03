@@ -20,12 +20,18 @@ export default function Page() {
     setConversation((currentConversation) => [...currentConversation, message]);
   };
 
+  console.log(conversation);
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-between p-24">
       <div className="flex flex-col w-full max-w-md py-24 mx-auto stretch">
         <div className="space-y-4">
           {conversation.map((message, i) => (
-            <div key={i}>{message}</div>
+            <div key={i}>
+              {message.spinner}
+              {message.display}
+              {message.attachments}
+            </div>
           ))}
         </div>
 
