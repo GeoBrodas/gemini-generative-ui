@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { AI } from '.././actions';
 import { useActions, useUIState } from 'ai/rsc';
+import { nanoid } from '@/lib/helper';
 
 export default function Page() {
   const [input, setInput] = useState<string>('');
@@ -14,7 +15,10 @@ export default function Page() {
     setInput('');
     setConversation((currentConversation) => [
       ...currentConversation,
-      <div>{input}</div>,
+      {
+        id: nanoid(),
+        display: <div>{input}</div>,
+      },
     ]);
     const message = await submitUserMessage(input);
     setConversation((currentConversation) => [...currentConversation, message]);

@@ -35,11 +35,11 @@ const searchDoctors = async (location: string, symptoms: string) => {
   ];
 };
 
-const diagnose = async (symptoms: string) => {
-  return {
-    response: 'You may have cancer!',
-  };
-};
+// const diagnose = async (symptoms: string) => {
+//   return {
+//     response: 'You may have cancer!',
+//   };
+// };
 
 export async function submitUserMessage(input: string) {
   'use server';
@@ -70,14 +70,14 @@ export async function submitUserMessage(input: string) {
   const messageStream = createStreamableUI(null);
   const uiStream = createStreamableUI();
 
-  async () => {
+  (async () => {
     try {
       const result = await streamText({
         //@ts-ignore
         model: google('models/gemini-1.5-flash-latest'),
         temperature: 0,
         system: trainedPrompt,
-        messages: [...history],
+        messages: [...history, { role: 'user', content: input }],
         tools: {
           searchDoctors: {
             description:
@@ -117,7 +117,7 @@ export async function submitUserMessage(input: string) {
           textContent += textDelta;
           messageStream.update(<BotMessage content={textContent} />);
 
-          aiState.update({
+          aiState.done({
             ...aiState.get(),
             messages: [
               ...aiState.get().messages,
@@ -165,7 +165,7 @@ export async function submitUserMessage(input: string) {
           } else if (toolName === 'diagnose') {
             const { issue } = args;
 
-            uiStream.update(<div>{issue}</div>);
+            uiStream.update(<div className="bg-yellow-200">{issue}</div>);
 
             aiState.done({
               ...aiState.get(),
@@ -200,7 +200,12 @@ export async function submitUserMessage(input: string) {
       messageStream.error(error);
       aiState.done();
     }
-  };
+  })();
+
+  // messageStream.done();
+  uiStream.done();
+  textStream.done();
+  // spinnerStream.done();
 
   return {
     id: nanoid(),
@@ -210,21 +215,80 @@ export async function submitUserMessage(input: string) {
   };
 }
 
+export type Message = {
+  role: 'user' | 'assistant' | 'system' | 'function' | 'data' | 'tool';
+  content: string;
+  id?: string;
+  name?: string;
+  display?: {
+    name: string;
+    props: Record<string, any>;
+  };
+};
+
+export type AIState = {
+  chatId: string;
+  interactions?: string[];
+  messages: Message[];
+};
+
+export type UIState = {
+  id: string;
+  display: React.ReactNode;
+  spinner?: React.ReactNode;
+  attachments?: React.ReactNode;
+}[];
+
+export interface Chat extends Record<string, any> {
+  id: string;
+  title: string;
+  createdAt: Date;
+  userId: string;
+  path: string;
+  messages: Message[];
+  sharePath?: string;
+}
+
 export const AI = createAI<any[], React.ReactNode[]>({
   initialUIState: [],
   initialAIState: { chatId: nanoid(), interactions: [], messages: [] },
   actions: {
     submitUserMessage,
   },
-  // unstable_onGetUIState: async () => {
-  //   'use server'
+  unstable_onGetUIState: async () => {
+    'use server';
 
-  //     const aiState = getAIState()
+    const aiState = getAIState();
 
-  //     if (aiState) {
-  //       const uiState = getUIStateFromAIState(aiState)
-  //       return uiState
-  //     }
-
-  // },
+    if (aiState) {
+      const uiState = getUIStateFromAIState(aiState);
+      return uiState;
+    } else return;
+  },
 });
+
+export const getUIStateFromAIState = (aiState: Chat) => {
+  return aiState.messages
+    .filter((message) => message.role !== 'system')
+    .map((message, index) => ({
+      id: `${aiState.chatId}-${index}`,
+      display:
+        message.role === 'assistant' ? (
+          message.display?.name === 'searchDoctors' ? (
+            <div>
+              {message.display.props.listOfDoctors.map((doctor, index) => (
+                <div key={index}>{doctor.name}</div>
+              ))}
+            </div>
+          ) : message.display?.name === 'diagnose' ? (
+            <div className="bg-yellow-200">{message.content}</div>
+          ) : (
+            <BotMessage content={message.content} />
+          )
+        ) : message.role === 'user' ? (
+          <div>{message.content}</div>
+        ) : (
+          <BotMessage content={message.content} />
+        ),
+    }));
+};

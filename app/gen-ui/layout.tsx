@@ -6,7 +6,12 @@ export default function GenUILayout({
   children: React.ReactNode;
 }) {
   return (
-    <AI>
+    <AI
+      initialAIState={{
+        interactions: [],
+        messages: [],
+      }}
+    >
       <section>{children}</section>
     </AI>
   );

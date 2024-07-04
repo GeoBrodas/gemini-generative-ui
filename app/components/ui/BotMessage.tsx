@@ -12,5 +12,5 @@ export default function BotMessage({
 }) {
   const text = useStreamableText(content);
 
-  return <div>{text}</div>;
+  return <div className="bg-gray-100 rounded-lg p-4">{text}</div>;
 }
