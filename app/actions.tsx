@@ -74,9 +74,19 @@ export async function submitUserMessage(input: string) {
     try {
       const result = await streamText({
         //@ts-ignore
-        model: google('models/gemini-1.5-flash-latest'),
+        model: google('models/gemini-pro'),
         temperature: 0,
-        system: trainedPrompt,
+        system:
+          'You are a doctor, your name is Baymax and you were created by Georgey. You are supposed to answer only questions that includes symptoms as your parameters. ' +
+          'Give diagnosis in 2 sentence. ' +
+          'Follow only the topics below ' +
+          `
+        1. Ask the persons name.
+        2. Ask where he/she is located.
+        3. Ask for symptoms.
+        4. Give a diagnosis and list of suitable doctors within his/her location, with contact number of hospital if possible.
+        5. Ask for any other diagnosis if user requests and repeat from 3.
+      `,
         messages: [...history, { role: 'user', content: input }],
         tools: {
           searchDoctors: {
@@ -107,6 +117,8 @@ export async function submitUserMessage(input: string) {
 
       let textContent = '';
       spinnerStream.done(null);
+
+      console.log(result.fullStream);
 
       for await (const delta of result.fullStream) {
         const { type } = delta;
@@ -165,7 +177,9 @@ export async function submitUserMessage(input: string) {
           } else if (toolName === 'diagnose') {
             const { issue } = args;
 
-            uiStream.update(<div className="bg-yellow-200">{issue}</div>);
+            uiStream.update(
+              <div className="bg-yellow-200">You have holy water</div>
+            );
 
             aiState.done({
               ...aiState.get(),
@@ -175,7 +189,7 @@ export async function submitUserMessage(input: string) {
                 {
                   id: nanoid(),
                   role: 'assistant',
-                  content: `Here's my diagnosis, you might be having ${diagnose}`,
+                  content: `Here's my diagnosis, you might be having `,
                   display: {
                     name: 'diagnose',
                     props: {
@@ -203,8 +217,8 @@ export async function submitUserMessage(input: string) {
   })();
 
   // messageStream.done();
-  uiStream.done();
-  textStream.done();
+  // uiStream.done();
+  // textStream.done();
   // spinnerStream.done();
 
   return {
