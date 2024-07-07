@@ -109,7 +109,11 @@ export async function submitUserMessage(input: string) {
             description:
               'Based on the symptoms, diagnose the nearest condition the user may be facing',
             parameters: z.object({
-              issue: z.string().describe('Health issue the user is facing'),
+              symptoms: z
+                .array(z.string().describe('Individual symptom'))
+                .describe('symptoms the user is facing'),
+              country: z.string().describe('Country of the user'),
+              state: z.string().describe('State from which the user belongs'),
             }),
           },
         },
@@ -117,8 +121,6 @@ export async function submitUserMessage(input: string) {
 
       let textContent = '';
       spinnerStream.done(null);
-
-      console.log(result.fullStream);
 
       for await (const delta of result.fullStream) {
         const { type } = delta;
@@ -175,7 +177,10 @@ export async function submitUserMessage(input: string) {
               ],
             });
           } else if (toolName === 'diagnose') {
-            const { issue } = args;
+            const { symptoms, country, state } = args;
+
+            console.log('symptomsss', symptoms);
+            console.log('location', country, 'from', state);
 
             uiStream.update(
               <div className="bg-yellow-200">You have holy water</div>
@@ -193,7 +198,7 @@ export async function submitUserMessage(input: string) {
                   display: {
                     name: 'diagnose',
                     props: {
-                      issue,
+                      symptoms,
                     },
                   },
                 },
