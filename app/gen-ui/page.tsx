@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { AI } from '.././actions';
 import { useActions, useUIState } from 'ai/rsc';
 import { nanoid } from '@/lib/helper';
+import { useScrollAnchor } from '@/lib/use-scroll-anchor';
 
 export default function Page() {
   const [input, setInput] = useState<string>('');
@@ -26,10 +27,16 @@ export default function Page() {
 
   console.log(conversation);
 
+  const { messagesRef, scrollRef, visibilityRef, isAtBottom, scrollToBottom } =
+    useScrollAnchor();
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
+    <main
+      ref={scrollRef}
+      className="flex min-h-screen flex-col items-center justify-between p-24"
+    >
       <div className="flex flex-col w-full max-w-md py-24 mx-auto stretch">
-        <div className="space-y-4">
+        <div className="space-y-4" ref={messagesRef}>
           {conversation.map((message, i) => (
             <div key={i}>
               {message.spinner}
@@ -37,6 +44,8 @@ export default function Page() {
               {message.attachments}
             </div>
           ))}
+
+          <div className="h-px w-full" ref={visibilityRef} />
         </div>
 
         <div>

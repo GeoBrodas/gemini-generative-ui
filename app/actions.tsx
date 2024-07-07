@@ -129,7 +129,6 @@ export async function submitUserMessage(input: string) {
           const { textDelta } = delta;
 
           textContent += textDelta;
-          messageStream.update(<BotMessage content={textContent} />);
 
           aiState.done({
             ...aiState.get(),
@@ -142,13 +141,15 @@ export async function submitUserMessage(input: string) {
               },
             ],
           });
+
+          messageStream.done(<BotMessage content={textContent} />);
         } else if (type === 'tool-call') {
           const { toolName, args } = delta;
 
           if (toolName === 'searchDoctors') {
             const { diagnosis, listOfDoctors, location } = args;
 
-            uiStream.update(
+            uiStream.done(
               <div>
                 {listOfDoctors.map((doctor, index) => (
                   <div key={index}>{doctor.name}</div>
@@ -182,7 +183,7 @@ export async function submitUserMessage(input: string) {
             console.log('symptomsss', symptoms);
             console.log('location', country, 'from', state);
 
-            uiStream.update(
+            uiStream.done(
               <div className="bg-yellow-200">You have holy water</div>
             );
 
@@ -208,7 +209,7 @@ export async function submitUserMessage(input: string) {
         }
       }
     } catch (e) {
-      console.error(e);
+      console.error('e', e);
 
       const error = new Error(
         'The AI got rate limited, please try again later.'
@@ -217,14 +218,8 @@ export async function submitUserMessage(input: string) {
       uiStream.error(error);
       textStream.error(error);
       messageStream.error(error);
-      aiState.done();
     }
   })();
-
-  // messageStream.done();
-  // uiStream.done();
-  // textStream.done();
-  // spinnerStream.done();
 
   return {
     id: nanoid(),
