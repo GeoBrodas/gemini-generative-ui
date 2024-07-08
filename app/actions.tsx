@@ -11,7 +11,7 @@ import {
 } from 'ai/rsc';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { trainedPrompt } from '@/lib/prompt';
-import { nanoid } from '@/lib/helper';
+import { nanoid, runAsyncFnWithoutBlocking } from '@/lib/helper';
 import Spinner from './components/ui/Spinner';
 import { streamText } from 'ai';
 import BotMessage from './components/ui/BotMessage';
@@ -70,22 +70,16 @@ export async function submitUserMessage(input: string) {
   const messageStream = createStreamableUI(null);
   const uiStream = createStreamableUI();
 
-  (async () => {
+  runAsyncFnWithoutBlocking(async () => {
     try {
       const result = await streamText({
         //@ts-ignore
-        model: google('models/gemini-pro'),
+        model: google('models/gemini-1.5-flash-latest'),
         temperature: 0,
-        system:
-          'You are a doctor, your name is Baymax and you were created by Georgey. You are supposed to answer only questions that includes symptoms as your parameters. ' +
-          'Give diagnosis in 2 sentence. ' +
-          'Follow only the topics below ' +
-          `
-        1. Ask the persons name.
-        2. Ask where he/she is located.
-        3. Ask for symptoms.
-        4. Give a diagnosis and list of suitable doctors within his/her location, with contact number of hospital if possible.
-        5. Ask for any other diagnosis if user requests and repeat from 3.
+        system: `\
+      You are a friendly assistant that helps the user with identifying health issue by diagnosing their symptoms.
+  
+        If the user enters their symptoms, call \`diagnose\` tool to show the UI.
       `,
         messages: [...history, { role: 'user', content: input }],
         tools: {
@@ -130,6 +124,8 @@ export async function submitUserMessage(input: string) {
 
           textContent += textDelta;
 
+          messageStream.update(<BotMessage content={textContent} />);
+
           aiState.done({
             ...aiState.get(),
             messages: [
@@ -141,15 +137,13 @@ export async function submitUserMessage(input: string) {
               },
             ],
           });
-
-          messageStream.done(<BotMessage content={textContent} />);
         } else if (type === 'tool-call') {
           const { toolName, args } = delta;
 
           if (toolName === 'searchDoctors') {
             const { diagnosis, listOfDoctors, location } = args;
 
-            uiStream.done(
+            uiStream.update(
               <div>
                 {listOfDoctors.map((doctor, index) => (
                   <div key={index}>{doctor.name}</div>
@@ -183,7 +177,7 @@ export async function submitUserMessage(input: string) {
             console.log('symptomsss', symptoms);
             console.log('location', country, 'from', state);
 
-            uiStream.done(
+            uiStream.update(
               <div className="bg-yellow-200">You have holy water</div>
             );
 
@@ -195,7 +189,7 @@ export async function submitUserMessage(input: string) {
                 {
                   id: nanoid(),
                   role: 'assistant',
-                  content: `Here's my diagnosis, you might be having `,
+                  content: `You have holy water`,
                   display: {
                     name: 'diagnose',
                     props: {
@@ -208,6 +202,10 @@ export async function submitUserMessage(input: string) {
           }
         }
       }
+
+      textStream.done();
+      uiStream.done();
+      messageStream.done();
     } catch (e) {
       console.error('e', e);
 
@@ -219,7 +217,7 @@ export async function submitUserMessage(input: string) {
       textStream.error(error);
       messageStream.error(error);
     }
-  })();
+  });
 
   return {
     id: nanoid(),
